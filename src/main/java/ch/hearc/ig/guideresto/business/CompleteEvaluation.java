@@ -1,7 +1,8 @@
 package ch.hearc.ig.guideresto.business;
 
+import ch.hearc.ig.guideresto.persistence.GradeMapper;
+
 import java.time.LocalDate;
-import java.util.HashSet;
 import java.util.Set;
 
 public class CompleteEvaluation extends Evaluation {
@@ -15,7 +16,7 @@ public class CompleteEvaluation extends Evaluation {
     super(id, visitDate, restaurant);
     this.comment = comment;
     this.username = username;
-    this.grades = new HashSet<>();
+    this.grades = null; // lazy loading
   }
 
   public String getComment() {
@@ -27,6 +28,15 @@ public class CompleteEvaluation extends Evaluation {
   }
 
   public Set<Grade> getGrades() {
-    return grades;
+    // lazy loading
+    if (this.grades == null) {
+      this.grades = GradeMapper.findByEvaluation(this);
+    }
+    return this.grades;
   }
+
+  public void setGrades(Set<Grade> grades) {
+    this.grades = grades;
+  }
+
 }

@@ -13,4 +13,22 @@ public abstract class Evaluation {
     this.visitDate = visitDate;
     this.restaurant = restaurant;
   }
+
+  public Integer getId() {
+    return id;
+  }
+
+  // ideally, this setter could be avoided by using reflection instead
+  // since this is a basic solution, this is acceptable though
+  public void setId(Integer id) {
+    this.id = id;
+  }
+
+  public LocalDate getVisitDate() {
+    return visitDate;
+  }
+
+  public Restaurant getRestaurant() {
+    return restaurant;
+  }
 }

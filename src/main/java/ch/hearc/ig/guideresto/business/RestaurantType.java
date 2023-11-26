@@ -1,6 +1,7 @@
 package ch.hearc.ig.guideresto.business;
 
-import java.util.HashSet;
+import ch.hearc.ig.guideresto.persistence.RestaurantMapper;
+
 import java.util.Set;
 
 public class RestaurantType {
@@ -14,8 +15,10 @@ public class RestaurantType {
         this.id = id;
         this.label = label;
         this.description = description;
-        this.restaurants = new HashSet<>();
+        this.restaurants = null; // lazy evaluation...
     }
+
+    public Integer getId() { return this.id; }
     
     public String getLabel() {
         return label;
@@ -26,6 +29,9 @@ public class RestaurantType {
     }
 
     public Set<Restaurant> getRestaurants() {
-        return restaurants;
+        if (this.restaurants == null) {
+            this.restaurants = RestaurantMapper.findByType(this);
+        }
+        return this.restaurants;
     }
 }

@@ -1,6 +1,7 @@
 package ch.hearc.ig.guideresto.business;
 
-import java.util.HashSet;
+import ch.hearc.ig.guideresto.persistence.EvaluationMapper;
+
 import java.util.Set;
 
 public class Restaurant {
@@ -18,23 +19,46 @@ public class Restaurant {
         this.name = name;
         this.description = description;
         this.website = website;
-        this.evaluations = new HashSet<>();
+        this.evaluations = null; // lazy evaluation
         this.address = new Localisation(street, city);
         this.type = type;
+    }
+
+    public Integer getId() { return this.id; }
+
+    // ideally, this setter could be avoided by using reflection instead
+    // since this is a basic solution, this is acceptable though
+    public void setId(Integer id) {
+        this.id = id;
     }
 
     public String getName() {
         return name;
     }
 
+    // bad-practice: over-engineering
+    // this method should be removed because it causes more trouble than help
+    // it's not good to have multiple ways to reach things (decreases readability)
+    // -> don't use it (i.e. don't increase dependencies on it)
+    // -> instead call Restaurant.getAddress().getCity().getZipCode(); directly
     public String getZipCode() {
         return address.getCity().getZipCode();
     }
 
+    // bad-practice: over-engineering
+    // this method should be removed because it causes more trouble than help
+    // it's not good to have multiple ways to reach things (decreases readability)
+    // -> don't use it (i.e. don't increase dependencies on it)
+    // -> instead call Restaurant.getAddress().getStreet(); directly
     public String getStreet() {
         return address.getStreet();
     }
 
+    // bad-practice: over-engineering
+    // this method should be removed because it causes more trouble than help
+    // it's not good to have multiple ways to reach things (decreases readability)
+    // -> don't use it (i.e. don't increase dependencies on it)
+    // -> instead call Restaurant.getAddress().getCity().getCityName(); directly
     public String getCityName() {
         return address.getCity().getCityName();
     }
@@ -60,7 +84,11 @@ public class Restaurant {
     }
 
     public Set<Evaluation> getEvaluations() {
-        return evaluations;
+        // lazy loading
+        if (this.evaluations == null) {
+            this.evaluations = EvaluationMapper.findByRestaurant(this);
+        }
+        return this.evaluations;
     }
 
     public Localisation getAddress() {

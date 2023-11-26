@@ -6,6 +6,8 @@ import java.util.Set;
 public class City {
     private Integer id;
     private String zipCode;
+    // naming: name (i.s.o cityName) would have been enough since the Class name
+    // already gives context
     private String cityName;
     private Set<Restaurant> restaurants;
 
@@ -15,7 +17,17 @@ public class City {
         this.cityName = cityName;
         this.restaurants = new HashSet<>();
     }
-    
+
+    public Integer getId() {
+        return id;
+    }
+
+    // ideally, this setter could be avoided by using reflection instead
+    // since this is a basic solution, this is acceptable though
+    public void setId(Integer id) {
+        this.id = id;
+    }
+
     public String getZipCode() {
         return zipCode;
     }
