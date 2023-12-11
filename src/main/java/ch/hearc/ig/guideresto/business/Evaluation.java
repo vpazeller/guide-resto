@@ -8,6 +8,8 @@ public abstract class Evaluation {
   private LocalDate visitDate;
   private Restaurant restaurant;
 
+  public Evaluation() {}
+
   public Evaluation(Integer id, LocalDate visitDate, Restaurant restaurant) {
     this.id = id;
     this.visitDate = visitDate;
@@ -28,7 +30,15 @@ public abstract class Evaluation {
     return visitDate;
   }
 
+  public void setVisitDate(LocalDate visitDate) {
+    this.visitDate = visitDate;
+  }
+
   public Restaurant getRestaurant() {
     return restaurant;
+  }
+
+  public void setRestaurant(Restaurant restaurant) {
+    this.restaurant = restaurant;
   }
 }

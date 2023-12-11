@@ -9,13 +9,16 @@ public class City {
     // naming: name (i.s.o cityName) would have been enough since the Class name
     // already gives context
     private String cityName;
-    private Set<Restaurant> restaurants;
+    private Set<Restaurant> restaurants = new HashSet<>();
+
+    // Having an empty constructor is handy to work with identity maps / entity registries
+    public City() {
+    }
 
     public City(Integer id, String zipCode, String cityName) {
         this.id = id;
         this.zipCode = zipCode;
         this.cityName = cityName;
-        this.restaurants = new HashSet<>();
     }
 
     public Integer getId() {
@@ -32,8 +35,16 @@ public class City {
         return zipCode;
     }
 
+    public void setZipCode(String zipCode) {
+        this.zipCode = zipCode;
+    }
+
     public String getCityName() {
         return cityName;
+    }
+
+    public void setCityName(String cityName) {
+        this.cityName = cityName;
     }
 
     public Set<Restaurant> getRestaurants() {

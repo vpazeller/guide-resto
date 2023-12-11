@@ -1,6 +1,9 @@
 package ch.hearc.ig.guideresto.persistence;
 
-import ch.hearc.ig.guideresto.business.*;
+import ch.hearc.ig.guideresto.business.CompleteEvaluation;
+import ch.hearc.ig.guideresto.business.Evaluation;
+import ch.hearc.ig.guideresto.business.Grade;
+import ch.hearc.ig.guideresto.business.Restaurant;
 import oracle.sql.CLOB;
 
 import java.math.BigDecimal;
@@ -13,6 +16,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class CompleteEvaluationMapper {
+
+    private static final EntityRegistry<CompleteEvaluation> registry = new EntityRegistry<>();
 
     private static final String QUERY_DELETE_BY_RESTAURANT = "DELETE COMMENTAIRES WHERE FK_REST = ?";
 
@@ -30,14 +35,15 @@ public class CompleteEvaluationMapper {
         Set<CompleteEvaluation> comments = new HashSet<>();
         List<Map<String, Object>> rows = QueryUtils.findAllByForeignKey(CompleteEvaluationMapper.QUERY_BY_RESTAURANT, restaurant.getId());
         for (Map<String, Object> row: rows) {
-            CompleteEvaluation comment = new CompleteEvaluation(
-                    ((BigDecimal) row.get("NUMERO")).intValue(),
-                    ((Timestamp) row.get("DATE_EVAL")).toLocalDateTime().toLocalDate(),
-                    restaurant,
-                    ResultUtils.clobToString((CLOB) row.get("COMMENTAIRE")),
-                    (String) row.get("NOM_UTILISATEUR")
-            );
+            Integer commentId = ((BigDecimal) row.get("NUMERO")).intValue();
+            CompleteEvaluation comment = registry.get(commentId).orElse(new CompleteEvaluation());
+            comment.setId(commentId);
+            comment.setVisitDate(((Timestamp) row.get("DATE_EVAL")).toLocalDateTime().toLocalDate());
+            comment.setRestaurant(restaurant);
+            comment.setComment(ResultUtils.clobToString((CLOB) row.get("COMMENTAIRE")));
+            comment.setUsername((String) row.get("NOM_UTILISATEUR"));
             comments.add(comment);
+            registry.set(commentId, comment);
         }
         return comments;
     }
@@ -67,6 +73,8 @@ public class CompleteEvaluationMapper {
         for (Grade grade: comment.getGrades()) {
             GradeMapper.insert(grade);
         }
+
+        registry.set(id, comment);
     }
 
     public static void deleteForRestaurant(Restaurant restaurant) {
@@ -74,6 +82,7 @@ public class CompleteEvaluationMapper {
         for (Evaluation evaluation: restaurant.getEvaluations()) {
             if (evaluation instanceof CompleteEvaluation) {
                 GradeMapper.deleteForEvaluation((CompleteEvaluation) evaluation);
+                registry.delete(evaluation.getId());
             }
         }
 

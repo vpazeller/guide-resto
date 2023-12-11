@@ -2,10 +2,10 @@ package ch.hearc.ig.guideresto.business;
 
 import ch.hearc.ig.guideresto.persistence.EvaluationMapper;
 
+import java.util.HashSet;
 import java.util.Set;
 
 public class Restaurant {
-
     private Integer id;
     private String name;
     private String description;
@@ -14,14 +14,19 @@ public class Restaurant {
     private Localisation address;
     private RestaurantType type;
 
+    // Having an empty constructor is handy to work with identity maps / entity registries
+    public Restaurant() {
+        this.evaluations = new HashSet<>();
+    }
+
     public Restaurant(Integer id, String name, String description, String website, String street, City city, RestaurantType type) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.website = website;
-        this.evaluations = null; // lazy evaluation
         this.address = new Localisation(street, city);
         this.type = type;
+        this.evaluations = null; // lazy evaluation
     }
 
     public Integer getId() { return this.id; }
@@ -93,6 +98,10 @@ public class Restaurant {
 
     public Localisation getAddress() {
         return address;
+    }
+
+    public void setAddress(Localisation address) {
+        this.address = address;
     }
 
     public RestaurantType getType() {

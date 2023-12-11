@@ -5,12 +5,11 @@ import ch.hearc.ig.guideresto.business.City;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class CityMapper {
+
+    private static final EntityRegistry<City> registry = new EntityRegistry<>();
 
     private static final String QUERY_FIND_ALL = "SELECT " +
             "NUMERO, CODE_POSTAL, NOM_VILLE " +
@@ -20,16 +19,22 @@ public class CityMapper {
             // optional, but adds safety if the table structure changes
             "(CODE_POSTAL, NOM_VILLE) " +
             "VALUES (?, ?)";
+
+    public static EntityRegistry<City> getRegistry() {
+        return registry;
+    }
+
     public static Set<City> findAll() {
         Set<City> cities = new HashSet<>();
         List<Map<String, Object>> rows = QueryUtils.findAll(CityMapper.QUERY_FIND_ALL);
         for (Map<String, Object> row: rows) {
-            City city = new City(
-                ((BigDecimal) row.get("NUMERO")).intValue(),
-                (String) row.get("CODE_POSTAL"),
-                (String) row.get("NOM_VILLE")
-            );
+            Integer cityId = ((BigDecimal) row.get("NUMERO")).intValue();
+            City city = registry.get(cityId).orElse(new City());
+            city.setId(cityId);
+            city.setZipCode((String) row.get("CODE_POSTAL"));
+            city.setCityName((String) row.get("NOM_VILLE"));
             cities.add(city);
+            registry.set(cityId, city);
         }
         return cities;
     }
@@ -47,5 +52,6 @@ public class CityMapper {
             }
         });
         city.setId(id);
+        registry.set(id, city);
     }
 }

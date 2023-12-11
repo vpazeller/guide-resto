@@ -1,6 +1,8 @@
 package ch.hearc.ig.guideresto.persistence;
 
 import ch.hearc.ig.guideresto.business.BasicEvaluation;
+import ch.hearc.ig.guideresto.business.CompleteEvaluation;
+import ch.hearc.ig.guideresto.business.Evaluation;
 import ch.hearc.ig.guideresto.business.Restaurant;
 
 import java.math.BigDecimal;
@@ -13,6 +15,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class BasicEvaluationMapper {
+
+    private static final EntityRegistry<BasicEvaluation> registry = new EntityRegistry<>();
 
     private static final String QUERY_BY_RESTAURANT = "SELECT " +
     "NUMERO, APPRECIATION, DATE_EVAL, ADRESSE_IP " +
@@ -30,14 +34,15 @@ public class BasicEvaluationMapper {
         Set<BasicEvaluation> likes = new HashSet<>();
         List<Map<String, Object>> rows = QueryUtils.findAllByForeignKey(BasicEvaluationMapper.QUERY_BY_RESTAURANT, restaurant.getId());
         for (Map<String, Object> row: rows) {
-            BasicEvaluation like = new BasicEvaluation(
-                    ((BigDecimal) row.get("NUMERO")).intValue(),
-                    ((Timestamp) row.get("DATE_EVAL")).toLocalDateTime().toLocalDate(),
-                    restaurant,
-                    row.get("APPRECIATION").equals("T"),
-                    (String) row.get("ADRESSE_IP")
-            );
+            Integer likeId = ((BigDecimal) row.get("NUMERO")).intValue();
+            BasicEvaluation like = registry.get(likeId).orElse(new BasicEvaluation());
+            like.setId(likeId);
+            like.setVisitDate(((Timestamp) row.get("DATE_EVAL")).toLocalDateTime().toLocalDate());
+            like.setRestaurant(restaurant);
+            like.setLikeRestaurant(row.get("APPRECIATION").equals("T"));
+            like.setIpAddress((String) row.get("ADRESSE_IP"));
             likes.add(like);
+            registry.set(likeId, like);
         }
         return likes;
     }
@@ -62,6 +67,7 @@ public class BasicEvaluationMapper {
             }
         });
         like.setId(id);
+        registry.set(id, like);
     }
 
     public static void deleteForRestaurant(Restaurant restaurant) {
@@ -69,5 +75,11 @@ public class BasicEvaluationMapper {
             BasicEvaluationMapper.QUERY_DELETE_BY_RESTAURANT,
             restaurant.getId()
         );
+
+        for (Evaluation evaluation: restaurant.getEvaluations()) {
+            if (evaluation instanceof BasicEvaluation) {
+                registry.delete(evaluation.getId());
+            }
+        }
     }
 }

@@ -1,7 +1,8 @@
 package ch.hearc.ig.guideresto.persistence;
 
-import ch.hearc.ig.guideresto.business.*;
-import oracle.sql.CLOB;
+import ch.hearc.ig.guideresto.business.CompleteEvaluation;
+import ch.hearc.ig.guideresto.business.EvaluationCriteria;
+import ch.hearc.ig.guideresto.business.Grade;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -12,6 +13,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class GradeMapper {
+
+    private static final EntityRegistry<Grade> registry = new EntityRegistry<>();
 
     private static final String QUERY_FIND_BY_EVALUATION = "SELECT " +
             "N.NUMERO AS N_NUMERO, N.NOTE AS N_NOTE, N.FK_CRIT AS N_FK_CRIT, N.FK_COMM AS N_FK_COMM, " +
@@ -31,13 +34,14 @@ public class GradeMapper {
         List<Map<String, Object>> rows = QueryUtils.findAllByForeignKey(GradeMapper.QUERY_FIND_BY_EVALUATION, evaluation.getId());
         Set<Grade> grades = new HashSet<>();
         for (Map<String, Object> row: rows) {
-            Grade grade = new Grade(
-                ((BigDecimal) row.get("N_NUMERO")).intValue(),
-                    ((BigDecimal) row.get("N_NOTE")).intValue(),
-                evaluation,
-                GradeMapper.fetchCriterion(row)
-            );
+            Integer gradeId = ((BigDecimal) row.get("N_NUMERO")).intValue();
+            Grade grade = registry.get(gradeId).orElse(new Grade());
+            grade.setId(gradeId);
+            grade.setGrade(((BigDecimal) row.get("N_NOTE")).intValue());
+            grade.setEvaluation(evaluation);
+            grade.setCriteria(GradeMapper.fetchCriterion(row));
             grades.add(grade);
+            registry.set(gradeId, grade);
         }
         return grades;
     }
@@ -70,6 +74,7 @@ public class GradeMapper {
             }
         });
         grade.setId(id);
+        registry.set(id, grade);
     }
 
     public static void deleteForEvaluation(CompleteEvaluation evaluation) {
@@ -77,6 +82,9 @@ public class GradeMapper {
             GradeMapper.QUERY_DELETE_BY_EVALUATION,
             evaluation.getId()
         );
+        for (Grade grade: evaluation.getGrades()) {
+            registry.delete(grade.getId());
+        }
     }
 
     private static EvaluationCriteria fetchCriterion(Map<String, Object> row) {
@@ -84,11 +92,14 @@ public class GradeMapper {
         if (criterionPk == null) {
             return null;
         }
-        // TODO: use registry to avoid duplicate instances
-        return new EvaluationCriteria(
-            ((BigDecimal) criterionPk).intValue(),
-            (String) row.get("C_NOM"),
-            (String) row.get("C_DESCRIPTION")
-        );
+        Integer criterionId = ((BigDecimal) criterionPk).intValue();
+        EvaluationCriteria criterion = EvaluationCriteriaMapper.getRegistry().get(criterionId)
+            .orElse(new EvaluationCriteria());
+        criterion.setId(criterionId);
+        criterion.setName((String) row.get("C_NOM"));
+        criterion.setDescription((String) row.get("C_DESCRIPTION"));
+        // Ensure instance is saved in the identity map
+        EvaluationCriteriaMapper.getRegistry().set(criterionId, criterion);
+        return criterion;
     }
 }

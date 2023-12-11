@@ -7,6 +7,9 @@ public class Grade {
     private CompleteEvaluation evaluation;
     private EvaluationCriteria criteria;
 
+    // Having an empty constructor is handy to work with identity maps / entity registries
+    public Grade() {}
+
     public Grade(Integer id, Integer grade, CompleteEvaluation evaluation, EvaluationCriteria criteria) {
         this.id = id;
         this.grade = grade;
@@ -28,11 +31,23 @@ public class Grade {
         return grade;
     }
 
+    public void setGrade(Integer grade) {
+        this.grade = grade;
+    }
+
     public EvaluationCriteria getCriteria() {
         return criteria;
     }
 
+    public void setCriteria(EvaluationCriteria criteria) {
+        this.criteria = criteria;
+    }
+
     public CompleteEvaluation getEvaluation() {
         return evaluation;
+    }
+
+    public void setEvaluation(CompleteEvaluation evaluation) {
+        this.evaluation = evaluation;
     }
 }

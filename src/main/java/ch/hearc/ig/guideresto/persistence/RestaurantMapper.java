@@ -7,11 +7,17 @@ import ch.hearc.ig.guideresto.business.RestaurantType;
 import oracle.sql.CLOB;
 
 import java.math.BigDecimal;
+import java.rmi.registry.Registry;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class RestaurantMapper {
+
+    private static final EntityRegistry<Restaurant> registry = new EntityRegistry<>();
 
     private static final String QUERY_FIND_ALL = "SELECT " +
             "R.NUMERO AS R_NUMERO, R.NOM AS R_NOM, R.ADRESSE AS R_ADRESSE, R.DESCRIPTION AS R_DESCRIPTION, R.SITE_WEB AS R_SITE_WEB, " +
@@ -35,6 +41,7 @@ public class RestaurantMapper {
             "WHERE NUMERO = ?";
 
     private static final String QUERY_DELETE_BY_ID = "DELETE RESTAURANTS WHERE NUMERO = ?";
+
     public static Set<Restaurant> findAll() {
         List<Map<String, Object>> rows = QueryUtils.findAll(RestaurantMapper.QUERY_FIND_ALL);
         return RestaurantMapper.fetchRestaurants(rows);
@@ -55,6 +62,7 @@ public class RestaurantMapper {
         CompleteEvaluationMapper.deleteForRestaurant(restaurant);
 
         QueryUtils.deleteByPkOrFk(RestaurantMapper.QUERY_DELETE_BY_ID, restaurantId);
+        registry.delete(restaurantId);
     }
     public static void insert(Restaurant restaurant) {
         if (restaurant.getId() != null) {
@@ -75,6 +83,7 @@ public class RestaurantMapper {
             }
         });
         restaurant.setId(id);
+        registry.set(id, restaurant);
     }
 
     public static void update(Restaurant restaurant) {
@@ -122,16 +131,24 @@ public class RestaurantMapper {
     private static Set<Restaurant> fetchRestaurants(List<Map<String, Object>> rows) {
         Set<Restaurant> restaurants = new HashSet<>();
         for (Map<String, Object> row: rows) {
-            Restaurant restaurant = new Restaurant(
-                    ((BigDecimal) row.get("R_NUMERO")).intValue(),
-                    (String) row.get("R_NOM"),
-                    ResultUtils.clobToString((CLOB) row.get("R_DESCRIPTION")),
-                    (String) row.get("R_SITE_WEB"),
-                    (String) row.get("R_ADRESSE"),
-                    RestaurantMapper.fetchCity(row),
-                    RestaurantMapper.fetchType(row)
+            // ensure no duplicate instances are created
+            Integer restaurantId = ((BigDecimal) row.get("R_NUMERO")).intValue();
+            Restaurant restaurant = registry.get(restaurantId).orElse(new Restaurant());
+
+            restaurant.setId(restaurantId);
+            restaurant.setName((String) row.get("R_NOM"));
+            restaurant.setDescription(ResultUtils.clobToString((CLOB) row.get("R_DESCRIPTION")));
+            restaurant.setWebsite((String) row.get("R_SITE_WEB"));
+            Localisation address = new Localisation(
+                (String) row.get("R_ADRESSE"),
+                RestaurantMapper.fetchCity(row)
             );
+            restaurant.setAddress(address);
+            restaurant.setType(RestaurantMapper.fetchType(row));
             restaurants.add(restaurant);
+            // Ensure instance is saved in the identity map
+            // (if it was already there, it will be overrided to the same value -> no effect)
+            registry.set(restaurantId, restaurant);
         }
         return restaurants;
     }
@@ -141,11 +158,14 @@ public class RestaurantMapper {
         if (cityFk == null) {
             return null;
         }
-        return new City(
-            ((BigDecimal) cityFk).intValue(),
-            (String) row.get("V_CODE"),
-            (String) row.get("V_NOM")
-        );
+        Integer cityId = ((BigDecimal) cityFk).intValue();
+        City city = CityMapper.getRegistry().get(cityId).orElse(new City());
+        city.setId(cityId);
+        city.setZipCode((String) row.get("V_CODE"));
+        city.setCityName((String) row.get("V_NOM"));
+        // Ensure instance is saved in the identity map
+        CityMapper.getRegistry().set(cityId, city);
+        return city;
     }
 
     private static RestaurantType fetchType(Map<String, Object> row) {
@@ -153,11 +173,14 @@ public class RestaurantMapper {
         if (typeFk == null) {
             return null;
         }
-        // TODO: use registry to avoid duplicate instances
-        return new RestaurantType(
-            ((BigDecimal) typeFk).intValue(),
-            (String) row.get("T_LABEL"),
-            ResultUtils.clobToString((CLOB) row.get("T_DESCRIPTION"))
-        );
+        Integer typeId = ((BigDecimal) typeFk).intValue();
+        RestaurantType type = RestaurantTypeMapper.getRegistry().get(typeId)
+            .orElse(new RestaurantType());
+        type.setId(typeId);
+        type.setLabel((String) row.get("T_LABEL"));
+        type.setDescription(ResultUtils.clobToString((CLOB) row.get("T_DESCRIPTION")));
+        // Ensure instance is saved in the identity map
+        RestaurantTypeMapper.getRegistry().set(typeId, type);
+        return type;
     }
 }
