@@ -1564,3 +1564,807 @@ index 1397ed3..23a45c7 100644
          if (this.restaurants == null) {
              this.restaurants = RestaurantMapper.findByType(this);
 ```
+
+### Diffs - Exercice 3
+
+Note: meilleur affichage sur GitHub: https://github.com/vpazeller/guide-resto/tree/feature/service-layer
+
+
+#### Application: Injection des déppendences sur les services
+
+C'est une manière de faire... Les framework tels que Spring offrent des fonctionnalité de Dependency Injection (DI)
+
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/application/Main.java b/src/main/java/ch/hearc/ig/guideresto/application/Main.java
+index 7122ba1..32295cd 100644
+--- a/src/main/java/ch/hearc/ig/guideresto/application/Main.java
++++ b/src/main/java/ch/hearc/ig/guideresto/application/Main.java
+@@ -1,18 +1,29 @@
+ package ch.hearc.ig.guideresto.application;
+
+ import ch.hearc.ig.guideresto.presentation.CLI;
++import ch.hearc.ig.guideresto.service.CityService;
++import ch.hearc.ig.guideresto.service.EvaluationCriteriaService;
++import ch.hearc.ig.guideresto.service.RestaurantService;
++import ch.hearc.ig.guideresto.service.RestaurantTypeService;
+
+ import java.util.Scanner;
+
+ public class Main {
+
+-  public static void main(String[] args) {
+-    // using of var is a bad practice (loss of readability)
+-    var scanner = new Scanner(System.in);
+-    // var fakeItems = new FakeItems();
+-    var printStream = System.out;
+-    var cli = new CLI(scanner, printStream/*, fakeItems*/);
++    public static void main(String[] args) {
++        // using of var is a bad practice (loss of readability)
++        var scanner = new Scanner(System.in);
++        var printStream = System.out;
++        // inject service dependencies to the presentation layer:
++        var cli = new CLI(
++            scanner,
++            printStream,
++            RestaurantService.getInstance(),
++            CityService.getInstance(),
++            RestaurantTypeService.getInstance(),
++            EvaluationCriteriaService.getInstance()
++        );
+
+-    cli.start();
+-  }
++        cli.start();
++    }
+ }
+```
+
+#### Business layer: Ajout d'intelligence dans certains setters
+
+Cela permet d'alléger la logique de la CLI. On aurait certainement pu le faire à d'autre endroits
+(non critique pour cette application qui n'utilise pas tous les "chemins" des associations du graphe)...
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/business/Localisation.java b/src/main/java/ch/hearc/ig/guideresto/business/Localisation.java
+index fda5f70..62a18d7 100644
+--- a/src/main/java/ch/hearc/ig/guideresto/business/Localisation.java
++++ b/src/main/java/ch/hearc/ig/guideresto/business/Localisation.java
+@@ -1,5 +1,7 @@
+ package ch.hearc.ig.guideresto.business;
+
++import java.util.Objects;
++
+ public class Localisation {
+
+     private String street;
+@@ -25,4 +27,21 @@ public class Localisation {
+     public void setCity(City city) {
+         this.city = city;
+     }
++
++    @Override
++    public boolean equals(Object o) {
++        if (this == o) {
++            return true;
++        }
++        if (o == null || this.getClass() != o.getClass()) {
++            return false;
++        }
++        Localisation that = (Localisation) o;
++        return Objects.equals(this.street, that.street)&& Objects.equals(this.city, that.city);
++    }
++
++    @Override
++    public int hashCode() {
++        return Objects.hash(this.street, this.city);
++    }
+ }
+```
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/business/Restaurant.java b/src/main/java/ch/hearc/ig/guideresto/business/Restaurant.java
+index 2cdd183..bae20db 100644
+--- a/src/main/java/ch/hearc/ig/guideresto/business/Restaurant.java
++++ b/src/main/java/ch/hearc/ig/guideresto/business/Restaurant.java
+@@ -100,15 +100,33 @@ public class Restaurant {
+         return address;
+     }
+
+-    public void setAddress(Localisation address) {
+-        this.address = address;
++    public void setAddress(Localisation newAddress) {
++        // it's a good practice to move graph complexity in setters/adders/removers
++        if (this.address == null || !this.address.equals(newAddress)) {
++            City oldCity = this.address == null ? null : this.address.getCity();
++            City newCity = newAddress.getCity();
++            if (oldCity != newCity) {
++                if (oldCity != null) {
++                    oldCity.getRestaurants().remove(this);
++                }
++                newCity.getRestaurants().add(this);
++            }
++            this.address = newAddress;
++        }
+     }
+
+     public RestaurantType getType() {
+         return type;
+     }
+
+-    public void setType(RestaurantType type) {
+-        this.type = type;
++    public void setType(RestaurantType newType) {
++        // it's a good practice to move graph complexity in setters/adders/removers
++        if (this.type == null || !this.type.equals(newType)) {
++            if (this.type != null) {
++                this.type.getRestaurants().remove(this);
++            }
++            this.type = newType;
++            newType.getRestaurants().add(this);
++        }
+     }
+ }
+```
+
+#### Service layer: création de la couche entière
+
+Cette couche gère les transactions et offre également quelques utilitaires qui permettent d'alléger 
+la couche de présentation (N.B. aucun code de présentation dans la couche de service! on respecte le SRP)
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/service/CityService.java b/src/main/java/ch/hearc/ig/guideresto/service/CityService.java
+new file mode 100644
+index 0000000..8bcad12
+--- /dev/null
++++ b/src/main/java/ch/hearc/ig/guideresto/service/CityService.java
+@@ -0,0 +1,45 @@
++package ch.hearc.ig.guideresto.service;
++
++import ch.hearc.ig.guideresto.business.City;
++import ch.hearc.ig.guideresto.persistence.CityMapper;
++
++import java.util.Optional;
++import java.util.Set;
++
++public class CityService {
++
++    private static CityService instance;
++
++    // Service objects in a service layer can have inter-dependencies.
++    // Frameworks usually solve this by using a service container and
++    // dependency injection (DI)
++    public CityService() {}
++
++    public static CityService getInstance() {
++        if (CityService.instance == null) {
++            CityService.instance = new CityService();
++        }
++        return CityService.instance;
++    }
++
++    public Set<City> getAll() {
++        // since we are only reading, there is no need for a transaction here
++        return CityMapper.findAll();
++    }
++
++    // it's also possible to create service methods not related to persistence
++    // as long as it does not step on another layer (e.g. presentation)
++    // In our case, this helps improve the presentation's layer readability
++    // (which is quite cluttered already)
++    public static Optional<City> filterByZipCode(Set<City> cities, String zipCode) {
++        // Possible improvement:
++        // it would be interesting to cache cities in the service so that
++        // 1) the first argument would not be needed
++        // 2) avoid extra calls from the presentation layer to the above getAll methods (would avoid uneeded queries)
++        return cities.stream()
++            .filter(current -> current.getZipCode().equalsIgnoreCase(zipCode.toUpperCase()))
++            .findFirst();
++    }
++
++
++}
+```
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/service/EvaluationCriteriaService.java b/src/main/java/ch/hearc/ig/guideresto/service/EvaluationCriteriaService.java
+new file mode 100644
+index 0000000..4708783
+--- /dev/null
++++ b/src/main/java/ch/hearc/ig/guideresto/service/EvaluationCriteriaService.java
+@@ -0,0 +1,29 @@
++package ch.hearc.ig.guideresto.service;
++
++import ch.hearc.ig.guideresto.business.EvaluationCriteria;
++import ch.hearc.ig.guideresto.persistence.EvaluationCriteriaMapper;
++
++import java.util.Set;
++
++public class EvaluationCriteriaService {
++
++    private static EvaluationCriteriaService instance;
++
++    // Service objects in a service layer can have inter-dependencies.
++    // Frameworks usually solve this by using a service container and
++    // dependency injection (DI)
++    public EvaluationCriteriaService() {}
++
++    public static EvaluationCriteriaService getInstance() {
++        if (EvaluationCriteriaService.instance == null) {
++            EvaluationCriteriaService.instance = new EvaluationCriteriaService();
++        }
++        return EvaluationCriteriaService.instance;
++    }
++
++    public Set<EvaluationCriteria> getAll() {
++        // since we are only reading, there is no need for a transaction here
++        return EvaluationCriteriaMapper.findAll();
++    }
++
++}
+```
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/service/RestaurantService.java b/src/main/java/ch/hearc/ig/guideresto/service/RestaurantService.java
+new file mode 100644
+index 0000000..eacf188
+--- /dev/null
++++ b/src/main/java/ch/hearc/ig/guideresto/service/RestaurantService.java
+@@ -0,0 +1,127 @@
++package ch.hearc.ig.guideresto.service;
++
++import ch.hearc.ig.guideresto.business.BasicEvaluation;
++import ch.hearc.ig.guideresto.business.CompleteEvaluation;
++import ch.hearc.ig.guideresto.business.Evaluation;
++import ch.hearc.ig.guideresto.business.Restaurant;
++import ch.hearc.ig.guideresto.persistence.BasicEvaluationMapper;
++import ch.hearc.ig.guideresto.persistence.CompleteEvaluationMapper;
++import ch.hearc.ig.guideresto.persistence.ConnectionUtils;
++import ch.hearc.ig.guideresto.persistence.RestaurantMapper;
++
++import java.net.Inet4Address;
++import java.net.UnknownHostException;
++import java.time.LocalDate;
++import java.util.Optional;
++import java.util.Set;
++
++public class RestaurantService {
++
++    private static RestaurantService instance;
++
++    // Service objects in a service layer can have inter-dependencies.
++    // Frameworks usually solve this by using a service container and
++    // dependency injection (DI)
++    public RestaurantService() {}
++
++    public static RestaurantService getInstance() {
++        if (RestaurantService.instance == null) {
++            RestaurantService.instance = new RestaurantService();
++        }
++        return RestaurantService.instance;
++    }
++
++    public Set<Restaurant> getAll() {
++        // since we are only reading, there is no need for a transaction here
++        return RestaurantMapper.findAll();
++    }
++
++    public void evaluate(Restaurant restaurant, CompleteEvaluation eval) {
++        Set<Evaluation> existingEvaluations = restaurant.getEvaluations();
++        // let's make it a bit more robust and avoid problems with misusage (duplicates)
++        if (!existingEvaluations.contains(eval)) {
++            existingEvaluations.add(eval);
++        }
++
++        // let's keep the transaction short and insert everything at the end:
++        ConnectionUtils.inTransaction(() -> {
++            CompleteEvaluationMapper.insert(eval);
++        });
++    }
++
++    public void save(Restaurant restaurant) {
++        ConnectionUtils.inTransaction(() -> {
++            // let's have a clever service which guesses
++            // what's need to be done (totally optional)
++            if (restaurant.getId() == null) {
++                RestaurantMapper.insert(restaurant);
++            } else {
++                RestaurantMapper.update(restaurant);
++            }
++        });
++    }
++
++    public void delete(Restaurant restaurant) {
++        restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
++        restaurant.getType().getRestaurants().remove(restaurant);
++        ConnectionUtils.inTransaction(() -> {
++            RestaurantMapper.delete(restaurant);
++        });
++    }
++
++    public void addLike(Restaurant restaurant) {
++        this.addBasicEval(restaurant, true);
++    }
++
++    public void addDislike(Restaurant restaurant) {
++        this.addBasicEval(restaurant, true);
++    }
++
++    // it's also possible to create service methods not related to persistence
++    // as long as it does not step on another layer (e.g. presentation)
++    // In our case, this helps improve the presentation's layer readability
++    // (which is quite cluttered already)
++    public long getLikes(Restaurant restaurant) {
++        return this.getBasicEvalCount(restaurant, true);
++    }
++
++    public long getDislikes(Restaurant restaurant) {
++        return this.getBasicEvalCount(restaurant, false);
++    }
++
++    public static Optional<Restaurant> filterByName(Set<Restaurant> restaurants, String name) {
++        // Possible improvement:
++        // it would be interesting to cache restaurants in the service (e.g. upon getAll calls) so that
++        return this.getBasicEvalCount(restaurant, true);
++    }
++
++    public long getDislikes(Restaurant restaurant) {
++        return this.getBasicEvalCount(restaurant, false);
++    }
++
++    public static Optional<Restaurant> filterByName(Set<Restaurant> restaurants, String name) {
++        // Possible improvement:
++        // it would be interesting to cache restaurants in the service (e.g. upon getAll calls) so that
++        // 1) the first argument would not be needed
++        // 2) avoid extra calls from the presentation layer to the above getAll methods (would avoid uneeded queries)
++        return restaurants.stream()
++            .filter(current -> current.getName().equalsIgnoreCase(name.toUpperCase()))
++            .findFirst();
++    }
++
++    private void addBasicEval(Restaurant restaurant, boolean isLike) {
++        BasicEvaluation eval = new BasicEvaluation(null, LocalDate.now(), restaurant, isLike, this.getIpAddress());
++        restaurant.getEvaluations().add(eval);
++        ConnectionUtils.inTransaction(() -> {
++            BasicEvaluationMapper.insert(eval);
++        });
++    }
++
++    private long getBasicEvalCount(Restaurant restaurant, boolean isLike) {
++        return restaurant.getEvaluations().stream()
++                .filter(BasicEvaluation.class::isInstance)
++                .map(BasicEvaluation.class::cast)
++                .filter(eval -> isLike == eval.isLikeRestaurant())
++                .count();
++    }
++
++    private String getIpAddress() {
++        try {
++            return Inet4Address.getLocalHost().toString();
++        } catch (UnknownHostException ex) {
++            throw new RuntimeException(ex);
++        }
++    }
++
++
++}
+```
+
+```diff
+diff --git a/src/main/java/ch/hearc/ig/guideresto/service/RestaurantTypeService.java b/src/main/java/ch/hearc/ig/guideresto/service/RestaurantTypeService.java
+new file mode 100644
+index 0000000..cab9ce6
+--- /dev/null
++++ b/src/main/java/ch/hearc/ig/guideresto/service/RestaurantTypeService.java
+@@ -0,0 +1,47 @@
++package ch.hearc.ig.guideresto.service;
++
++import ch.hearc.ig.guideresto.business.Restaurant;
++import ch.hearc.ig.guideresto.business.RestaurantType;
++import ch.hearc.ig.guideresto.persistence.RestaurantMapper;
++import ch.hearc.ig.guideresto.persistence.RestaurantTypeMapper;
++
++import java.util.Optional;
++import java.util.Set;
++
++public class RestaurantTypeService {
++
++    private static RestaurantTypeService instance;
++
++    // Service objects in a service layer can have inter-dependencies.
++    // Frameworks usually solve this by using a service container and
++    // dependency injection (DI)
++    public RestaurantTypeService() {}
++
++    public static RestaurantTypeService getInstance() {
++        if (RestaurantTypeService.instance == null) {
++            RestaurantTypeService.instance = new RestaurantTypeService();
++        }
++        return RestaurantTypeService.instance;
++    }
++
++    public Set<RestaurantType> getAll() {
++        // since we are only reading, there is no need for a transaction here
++        return RestaurantTypeMapper.findAll();
++    }
++
++    // it's also possible to create service methods not related to persistence
++    // as long as it does not step on another layer (e.g. presentation)
++    // In our case, this helps improve the presentation's layer readability
++    // (which is quite cluttered already)
++    public static Optional<RestaurantType> filterByLabel(Set<RestaurantType> types, String label) {
++        // Possible improvement:
++        // it would be interesting to cache restaurant types in the service so that
++        // 1) the first argument would not be needed
++        // 2) avoid extra calls from the presentation layer to the above getAll methods (would avoid uneeded queries)
++        return types.stream()
++            .filter(current -> current.getLabel().equalsIgnoreCase(label.toUpperCase()))
++            .findFirst();
++    }
++
++
++}
+```
+
+#### Presentation layer: simplifications
+
+On utilise la couche de service -> plus de liens directs avec la couche de persistence.
+
+On en profite aussi pour améliorer la lisibilité en répartissant du code qui peut aller dans d'autres couches (business, service).
+
+```diff
+ git diff b6d2987e1b84146e12b4dfc93d37e660165a0173 src/main/java/ch/hearc/ig/guideresto/presentation
+diff --git a/src/main/java/ch/hearc/ig/guideresto/presentation/CLI.java b/src/main/java/ch/hearc/ig/guideresto/presentation/CLI.java
+index 79ebd1b..1ba24ff 100644
+--- a/src/main/java/ch/hearc/ig/guideresto/presentation/CLI.java
++++ b/src/main/java/ch/hearc/ig/guideresto/presentation/CLI.java
+@@ -1,35 +1,43 @@
+ package ch.hearc.ig.guideresto.presentation;
+
+-import static java.util.stream.Collectors.joining;
+-import static java.util.stream.Collectors.toUnmodifiableSet;
+-
+-import ch.hearc.ig.guideresto.business.BasicEvaluation;
+-import ch.hearc.ig.guideresto.business.City;
+-import ch.hearc.ig.guideresto.business.CompleteEvaluation;
+-import ch.hearc.ig.guideresto.business.Evaluation;
+-import ch.hearc.ig.guideresto.business.EvaluationCriteria;
+-import ch.hearc.ig.guideresto.business.Grade;
+-import ch.hearc.ig.guideresto.business.Restaurant;
+-import ch.hearc.ig.guideresto.business.RestaurantType;
+-import ch.hearc.ig.guideresto.persistence.*;
++import ch.hearc.ig.guideresto.business.*;
++import ch.hearc.ig.guideresto.service.CityService;
++import ch.hearc.ig.guideresto.service.EvaluationCriteriaService;
++import ch.hearc.ig.guideresto.service.RestaurantService;
++import ch.hearc.ig.guideresto.service.RestaurantTypeService;
+
+ import java.io.PrintStream;
+-import java.net.Inet4Address;
+-import java.net.UnknownHostException;
+ import java.time.LocalDate;
+ import java.util.*;
+
++import static java.util.stream.Collectors.joining;
++import static java.util.stream.Collectors.toUnmodifiableSet;
++
+ public class CLI {
+
+   private final Scanner scanner;
+   private final PrintStream printStream;
+-  // private final FakeItems fakeItems;
++
++  private final RestaurantService restaurantService;
++  private final CityService cityService;
++  private final RestaurantTypeService restaurantTypeService;
++  private final EvaluationCriteriaService evaluationCriteriaService;
+
+   // Injection de dépendances
+-  public CLI(Scanner scanner, PrintStream printStream/*, FakeItems fakeItems*/) {
++  public CLI(
++          Scanner scanner,
++          PrintStream printStream,
++          RestaurantService restaurantService,
++          CityService cityService,
++          RestaurantTypeService restaurantTypeService,
++          EvaluationCriteriaService evaluationCriteriaService
++  ) {
+     this.scanner = scanner;
+     this.printStream = printStream;
+-    // this.fakeItems = fakeItems;
++    this.restaurantService = restaurantService;
++    this.cityService = cityService;
++    this.restaurantTypeService = restaurantTypeService;
++    this.evaluationCriteriaService = evaluationCriteriaService;
+   }
+
+   public void start() {
+@@ -95,13 +103,13 @@ public class CLI {
+         "Veuillez saisir le nom exact du restaurant dont vous voulez voir le détail, ou appuyez sur Enter pour revenir en arrière");
+     String choice = readString();
+
+-    return searchRestaurantByName(restaurants, choice);
++    return RestaurantService.filterByName(restaurants, choice);
+   }
+
+   private void showRestaurantsList() {
+     println("Liste des restaurants : ");
+
+-    Set<Restaurant> restaurants = RestaurantMapper.findAll(); // fakeItems.getAllRestaurants();
++    Set<Restaurant> restaurants = this.restaurantService.getAll();
+
+     Optional<Restaurant> maybeRestaurant = pickRestaurant(restaurants);
+     // Si l'utilisateur a choisi un restaurant, on l'affiche, sinon on ne fait rien et l'application va réafficher le menu principal
+@@ -112,7 +120,7 @@ public class CLI {
+     println("Veuillez entrer une partie du nom recherché : ");
+     String research = readString();
+
+-    Set<Restaurant> restaurants = RestaurantMapper.findAll() // fakeItems.getAllRestaurants()
++    Set<Restaurant> restaurants = this.restaurantService.getAll()
+         .stream()
+         .filter(r -> r.getName().equalsIgnoreCase(research))
+         .collect(toUnmodifiableSet());
+@@ -134,7 +142,7 @@ public class CLI {
+     // 2. RestaurantMapper.findByCity(City city) to find all restaurants in a city
+     // The option below has been selected in the solution simply because it less intrusive in the CLI's code
+     // (less code modifications)
+-    Set<Restaurant> restaurants = RestaurantMapper.findAll() // fakeItems.getAllRestaurants()
++    Set<Restaurant> restaurants = this.restaurantService.getAll()
+         .stream()
+         .filter(r -> r.getAddress().getCity().getCityName().toUpperCase().contains(research.toUpperCase()))
+         .collect(toUnmodifiableSet());
+@@ -157,12 +165,10 @@ public class CLI {
+       String zipCode = readString();
+       println("Veuillez entrer le nom de la nouvelle ville : ");
+       String cityName = readString();
+-      City city = new City(null, zipCode, cityName);
+-      // fakeItems.getCities().add(city);
+-      return city;
++      return new City(null, zipCode, cityName);
+     }
+
+-    return searchCityByZipCode(cities, choice).orElseGet(() -> pickCity(cities));
++    return CityService.filterByZipCode(cities, choice).orElseGet(() -> pickCity(cities));
+   }
+
+   private RestaurantType pickRestaurantType(Set<RestaurantType> types) {
+@@ -176,12 +182,12 @@ public class CLI {
+     println(typesText);
+     String choice = readString();
+
+-    Optional<RestaurantType> maybeRestaurantType = searchTypeByLabel(types, choice);
++    Optional<RestaurantType> maybeRestaurantType = RestaurantTypeService.filterByLabel(types, choice);
+     return maybeRestaurantType.orElseGet(() -> pickRestaurantType(types));
+   }
+
+   private void searchRestaurantByType() {
+-    Set<RestaurantType> restaurantTypes = RestaurantTypeMapper.findAll(); // fakeItems.getRestaurantTypes();
++    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
+     RestaurantType chosenType = pickRestaurantType(restaurantTypes);
+
+     // Another (better) option could be to have two finder methods:
+@@ -189,7 +195,7 @@ public class CLI {
+     // 2. RestaurantMapper.findByType(RestaurantType type) to find all restaurants of a given type
+     // The option below has been selected in the solution simply because it less intrusive in the CLI's code
+     // (less code modifications)
+-    Set<Restaurant> restaurants = RestaurantMapper.findAll() // fakeItems.getAllRestaurants()
++    Set<Restaurant> restaurants = this.restaurantService.getAll()
+         .stream()
+         .filter(r -> r.getType().getLabel().equalsIgnoreCase(chosenType.getLabel()))
+         .collect(toUnmodifiableSet());
+@@ -209,27 +215,23 @@ public class CLI {
+     println("Rue : ");
+     String street = readString();
+     City city;
++    Set<City> cities = this.cityService.getAll();
+     do
+     { // La sélection d'une ville est obligatoire, donc l'opération se répètera tant qu'aucune ville n'est sélectionnée.
+-      Set<City> cities = CityMapper.findAll(); // fakeItems.getCities();
+       city = pickCity(cities);
+     } while (city == null);
+
+     RestaurantType restaurantType;
+
+     // La sélection d'un type est obligatoire, donc l'opération se répètera tant qu'aucun type n'est sélectionné.
+-    Set<RestaurantType> restaurantTypes = RestaurantTypeMapper.findAll(); // fakeItems.getRestaurantTypes();
++    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
+     restaurantType = pickRestaurantType(restaurantTypes);
+
+     Restaurant restaurant = new Restaurant(null, name, description, website, street, city,
+         restaurantType);
+-    city.getRestaurants().add(restaurant);
+     restaurant.getAddress().setCity(city);
+
+-    ConnectionUtils.inTransaction(() -> {
+-      RestaurantMapper.insert(restaurant);
+-    });
+-    // fakeItems.getAllRestaurants().add(restaurant);
++    this.restaurantService.save(restaurant);
+
+     showRestaurant(restaurant);
+   }
+@@ -242,8 +244,8 @@ public class CLI {
+         restaurant.getAddress().getStreet() + ", " +
+         restaurant.getAddress().getCity().getZipCode() + " " + restaurant.getAddress().getCity()
+         .getCityName() + "\n" +
+-        "Nombre de likes : " + countLikes(restaurant.getEvaluations(), true) + "\n" +
+-        "Nombre de dislikes : " + countLikes(restaurant.getEvaluations(), false) + "\n" +
++        "Nombre de likes : " + this.restaurantService.getLikes(restaurant) + "\n" +
++        "Nombre de dislikes : " + this.restaurantService.getDislikes(restaurant) + "\n" +
+         "\nEvaluations reçues : " + "\n";
+
+     String text = restaurant.getEvaluations()
+@@ -265,14 +267,6 @@ public class CLI {
+     } while (choice != 0 && choice != 6); // 6 car le restaurant est alors supprimé...
+   }
+
+-  private long countLikes(Set<Evaluation> evaluations, boolean likeRestaurant) {
+-    return evaluations.stream()
+-        .filter(BasicEvaluation.class::isInstance)
+-        .map(BasicEvaluation.class::cast)
+-        .filter(eval -> likeRestaurant == eval.isLikeRestaurant())
+-        .count();
+-  }
+-
+   private String getCompleteEvaluationDescription(CompleteEvaluation eval) {
+     String result = "Evaluation de : " + eval.getUsername() + "\n";
+     result += "Commentaire : " + eval.getComment() + "\n";
+@@ -297,10 +291,12 @@ public class CLI {
+   private void proceedRestaurantMenu(int choice, Restaurant restaurant) {
+     switch (choice) {
+       case 1:
+-        addBasicEvaluation(restaurant, true);
++        this.restaurantService.addLike(restaurant);
++        println("Votre vote a été pris en compte !");
+         break;
+       case 2:
+-        addBasicEvaluation(restaurant, false);
++        this.restaurantService.addDislike(restaurant);
++        println("Votre vote a été pris en compte !");
+         break;
+       case 3:
+         evaluateRestaurant(restaurant);
+@@ -320,23 +316,6 @@ public class CLI {
+     }
+   }
+
+-  private void addBasicEvaluation(Restaurant restaurant, Boolean like) {
+-    BasicEvaluation eval = new BasicEvaluation(null, LocalDate.now(), restaurant, like, getIpAddress());
+-    restaurant.getEvaluations().add(eval);
+-    ConnectionUtils.inTransaction(() -> {
+-      BasicEvaluationMapper.insert(eval);
+-    });
+-    println("Votre vote a été pris en compte !");
+-  }
+-
+-  private String getIpAddress() {
+-    try {
+-      return Inet4Address.getLocalHost().toString();
+-    } catch (UnknownHostException ex) {
+-      throw new RuntimeException(ex);
+-    }
+-  }
+-
+   private void evaluateRestaurant(Restaurant restaurant) {
+     println("Merci d'évaluer ce restaurant !");
+     println("Quel est votre nom d'utilisateur ? ");
+@@ -346,7 +325,7 @@ public class CLI {
+
+     println("Veuillez svp donner une note entre 1 et 5 pour chacun de ces critères : ");
+
+-    Set<EvaluationCriteria> evaluationCriterias = EvaluationCriteriaMapper.findAll(); // fakeItems.getEvaluationCriterias();
++    Set<EvaluationCriteria> evaluationCriterias = this.evaluationCriteriaService.getAll();
+
+     CompleteEvaluation eval = new CompleteEvaluation(null, LocalDate.now(), restaurant, comment, username);
+     Set<Grade> grades = new HashSet<>();
+@@ -357,12 +336,8 @@ public class CLI {
+       grades.add(grade);
+     });
+     eval.setGrades(grades);
+-    restaurant.getEvaluations().add(eval);
+
+-    // let's keep the transaction short and insert everything at the end:
+-    ConnectionUtils.inTransaction(() -> {
+-      CompleteEvaluationMapper.insert(eval);
+-    });
++    this.restaurantService.evaluate(restaurant, eval);
+
+     println("Votre évaluation a bien été enregistrée, merci !");
+   }
+@@ -378,50 +353,30 @@ public class CLI {
+     restaurant.setWebsite(readString());
+     println("Nouveau type de restaurant : ");
+
+-    Set<RestaurantType> restaurantTypes = RestaurantTypeMapper.findAll();
++    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
+
+     RestaurantType newType = pickRestaurantType(restaurantTypes);
+-    if (newType != restaurant.getType()) {
+-      restaurant.getType().getRestaurants().remove(restaurant); // Il faut d'abord supprimer notre restaurant puisque le type va peut-être changer
+-      newType.getRestaurants().add(restaurant);
+-      restaurant.setType(newType);
+-    }
++    restaurant.setType(newType);
+
+-    ConnectionUtils.inTransaction(() -> {
+-      RestaurantMapper.update(restaurant);
+-    });
++    this.restaurantService.save(restaurant);
+
+     println("Merci, le restaurant a bien été modifié !");
+   }
+
+   private void editRestaurantAddress(Restaurant restaurant) {
+     println("Edition de l'adresse d'un restaurant !");
+-
+     println("Nouvelle rue : ");
+-    restaurant.getAddress().setStreet(readString());
+-
+-    Set<City> cities = CityMapper.findAll();
+-
++    String newStreet = readString();
++    Set<City> cities = this.cityService.getAll();
+     // pickCity is interacting with the user -> it's not good
+     // to have this logic in a transaction.
+     // instead, let the RestaurantMapper insert the city
+     // automagically if needed (if City's id is null)
+     // ConnectionUtils.inTransaction(() -> {
+       City newCity = pickCity(cities);
+-      // if (newCity.equals(restaurant.getAddress().getCity())) {
+-      //    restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
+-      //    newCity.getRestaurants().add(restaurant);
+-      //    restaurant.getAddress().setCity(newCity);
+-      // }
+-      restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
+-      newCity.getRestaurants().add(restaurant);
+-      restaurant.getAddress().setCity(newCity);
++      restaurant.setAddress(new Localisation(newStreet, newCity));
+     // });
+-
+-    ConnectionUtils.inTransaction(() -> {
+-      RestaurantMapper.update(restaurant);
+-    });
+-
++    this.restaurantService.save(restaurant);
+     println("L'adresse a bien été modifiée ! Merci !");
+   }
+
+@@ -429,35 +384,11 @@ public class CLI {
+     println("Etes-vous sûr de vouloir supprimer ce restaurant ? (O/n)");
+     String choice = readString();
+     if ("o".equalsIgnoreCase(choice)) {
+-      restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
+-      restaurant.getType().getRestaurants().remove(restaurant);
+-      ConnectionUtils.inTransaction(() -> {
+-        RestaurantMapper.delete(restaurant);
+-      });
+-      // fakeItems.getAllRestaurants().remove(restaurant);
++      this.restaurantService.delete(restaurant);
+       println("Le restaurant a bien été supprimé !");
+     }
+   }
+
+-  private Optional<Restaurant> searchRestaurantByName(Set<Restaurant> restaurants,
+-      String name) {
+-    return restaurants.stream()
+-        .filter(current -> current.getName().equalsIgnoreCase(name.toUpperCase()))
+-        .findFirst();
+-  }
+-
+-  private Optional<City> searchCityByZipCode(Set<City> cities, String zipCode) {
+-    return cities.stream()
+-        .filter(current -> current.getZipCode().equalsIgnoreCase(zipCode.toUpperCase()))
+-        .findFirst();
+-  }
+-
+-  private Optional<RestaurantType> searchTypeByLabel(Set<RestaurantType> types, String label) {
+-    return types.stream()
+-        .filter(current -> current.getLabel().equalsIgnoreCase(label.toUpperCase()))
+-        .findFirst();
+-  }
+-
+   private int readInt() {
+     int i = 0;
+     boolean success = false;
+```
+

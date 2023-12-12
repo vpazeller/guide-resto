@@ -1,35 +1,43 @@
 package ch.hearc.ig.guideresto.presentation;
 
-import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toUnmodifiableSet;
-
-import ch.hearc.ig.guideresto.business.BasicEvaluation;
-import ch.hearc.ig.guideresto.business.City;
-import ch.hearc.ig.guideresto.business.CompleteEvaluation;
-import ch.hearc.ig.guideresto.business.Evaluation;
-import ch.hearc.ig.guideresto.business.EvaluationCriteria;
-import ch.hearc.ig.guideresto.business.Grade;
-import ch.hearc.ig.guideresto.business.Restaurant;
-import ch.hearc.ig.guideresto.business.RestaurantType;
-import ch.hearc.ig.guideresto.persistence.*;
+import ch.hearc.ig.guideresto.business.*;
+import ch.hearc.ig.guideresto.service.CityService;
+import ch.hearc.ig.guideresto.service.EvaluationCriteriaService;
+import ch.hearc.ig.guideresto.service.RestaurantService;
+import ch.hearc.ig.guideresto.service.RestaurantTypeService;
 
 import java.io.PrintStream;
-import java.net.Inet4Address;
-import java.net.UnknownHostException;
 import java.time.LocalDate;
 import java.util.*;
+
+import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 public class CLI {
 
   private final Scanner scanner;
   private final PrintStream printStream;
-  // private final FakeItems fakeItems;
+
+  private final RestaurantService restaurantService;
+  private final CityService cityService;
+  private final RestaurantTypeService restaurantTypeService;
+  private final EvaluationCriteriaService evaluationCriteriaService;
 
   // Injection de dépendances
-  public CLI(Scanner scanner, PrintStream printStream/*, FakeItems fakeItems*/) {
+  public CLI(
+          Scanner scanner,
+          PrintStream printStream,
+          RestaurantService restaurantService,
+          CityService cityService,
+          RestaurantTypeService restaurantTypeService,
+          EvaluationCriteriaService evaluationCriteriaService
+  ) {
     this.scanner = scanner;
     this.printStream = printStream;
-    // this.fakeItems = fakeItems;
+    this.restaurantService = restaurantService;
+    this.cityService = cityService;
+    this.restaurantTypeService = restaurantTypeService;
+    this.evaluationCriteriaService = evaluationCriteriaService;
   }
 
   public void start() {
@@ -95,13 +103,13 @@ public class CLI {
         "Veuillez saisir le nom exact du restaurant dont vous voulez voir le détail, ou appuyez sur Enter pour revenir en arrière");
     String choice = readString();
 
-    return searchRestaurantByName(restaurants, choice);
+    return RestaurantService.filterByName(restaurants, choice);
   }
 
   private void showRestaurantsList() {
     println("Liste des restaurants : ");
 
-    Set<Restaurant> restaurants = RestaurantMapper.findAll(); // fakeItems.getAllRestaurants();
+    Set<Restaurant> restaurants = this.restaurantService.getAll();
 
     Optional<Restaurant> maybeRestaurant = pickRestaurant(restaurants);
     // Si l'utilisateur a choisi un restaurant, on l'affiche, sinon on ne fait rien et l'application va réafficher le menu principal
@@ -112,7 +120,7 @@ public class CLI {
     println("Veuillez entrer une partie du nom recherché : ");
     String research = readString();
 
-    Set<Restaurant> restaurants = RestaurantMapper.findAll() // fakeItems.getAllRestaurants()
+    Set<Restaurant> restaurants = this.restaurantService.getAll()
         .stream()
         .filter(r -> r.getName().equalsIgnoreCase(research))
         .collect(toUnmodifiableSet());
@@ -134,7 +142,7 @@ public class CLI {
     // 2. RestaurantMapper.findByCity(City city) to find all restaurants in a city
     // The option below has been selected in the solution simply because it less intrusive in the CLI's code
     // (less code modifications)
-    Set<Restaurant> restaurants = RestaurantMapper.findAll() // fakeItems.getAllRestaurants()
+    Set<Restaurant> restaurants = this.restaurantService.getAll()
         .stream()
         .filter(r -> r.getAddress().getCity().getCityName().toUpperCase().contains(research.toUpperCase()))
         .collect(toUnmodifiableSet());
@@ -157,12 +165,10 @@ public class CLI {
       String zipCode = readString();
       println("Veuillez entrer le nom de la nouvelle ville : ");
       String cityName = readString();
-      City city = new City(null, zipCode, cityName);
-      // fakeItems.getCities().add(city);
-      return city;
+      return new City(null, zipCode, cityName);
     }
 
-    return searchCityByZipCode(cities, choice).orElseGet(() -> pickCity(cities));
+    return CityService.filterByZipCode(cities, choice).orElseGet(() -> pickCity(cities));
   }
 
   private RestaurantType pickRestaurantType(Set<RestaurantType> types) {
@@ -176,12 +182,12 @@ public class CLI {
     println(typesText);
     String choice = readString();
 
-    Optional<RestaurantType> maybeRestaurantType = searchTypeByLabel(types, choice);
+    Optional<RestaurantType> maybeRestaurantType = RestaurantTypeService.filterByLabel(types, choice);
     return maybeRestaurantType.orElseGet(() -> pickRestaurantType(types));
   }
 
   private void searchRestaurantByType() {
-    Set<RestaurantType> restaurantTypes = RestaurantTypeMapper.findAll(); // fakeItems.getRestaurantTypes();
+    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
     RestaurantType chosenType = pickRestaurantType(restaurantTypes);
 
     // Another (better) option could be to have two finder methods:
@@ -189,7 +195,7 @@ public class CLI {
     // 2. RestaurantMapper.findByType(RestaurantType type) to find all restaurants of a given type
     // The option below has been selected in the solution simply because it less intrusive in the CLI's code
     // (less code modifications)
-    Set<Restaurant> restaurants = RestaurantMapper.findAll() // fakeItems.getAllRestaurants()
+    Set<Restaurant> restaurants = this.restaurantService.getAll()
         .stream()
         .filter(r -> r.getType().getLabel().equalsIgnoreCase(chosenType.getLabel()))
         .collect(toUnmodifiableSet());
@@ -209,27 +215,23 @@ public class CLI {
     println("Rue : ");
     String street = readString();
     City city;
+    Set<City> cities = this.cityService.getAll();
     do
     { // La sélection d'une ville est obligatoire, donc l'opération se répètera tant qu'aucune ville n'est sélectionnée.
-      Set<City> cities = CityMapper.findAll(); // fakeItems.getCities();
       city = pickCity(cities);
     } while (city == null);
 
     RestaurantType restaurantType;
 
     // La sélection d'un type est obligatoire, donc l'opération se répètera tant qu'aucun type n'est sélectionné.
-    Set<RestaurantType> restaurantTypes = RestaurantTypeMapper.findAll(); // fakeItems.getRestaurantTypes();
+    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
     restaurantType = pickRestaurantType(restaurantTypes);
 
     Restaurant restaurant = new Restaurant(null, name, description, website, street, city,
         restaurantType);
-    city.getRestaurants().add(restaurant);
     restaurant.getAddress().setCity(city);
 
-    ConnectionUtils.inTransaction(() -> {
-      RestaurantMapper.insert(restaurant);
-    });
-    // fakeItems.getAllRestaurants().add(restaurant);
+    this.restaurantService.save(restaurant);
 
     showRestaurant(restaurant);
   }
@@ -242,8 +244,8 @@ public class CLI {
         restaurant.getAddress().getStreet() + ", " +
         restaurant.getAddress().getCity().getZipCode() + " " + restaurant.getAddress().getCity()
         .getCityName() + "\n" +
-        "Nombre de likes : " + countLikes(restaurant.getEvaluations(), true) + "\n" +
-        "Nombre de dislikes : " + countLikes(restaurant.getEvaluations(), false) + "\n" +
+        "Nombre de likes : " + this.restaurantService.getLikes(restaurant) + "\n" +
+        "Nombre de dislikes : " + this.restaurantService.getDislikes(restaurant) + "\n" +
         "\nEvaluations reçues : " + "\n";
 
     String text = restaurant.getEvaluations()
@@ -263,14 +265,6 @@ public class CLI {
       choice = readInt();
       proceedRestaurantMenu(choice, restaurant);
     } while (choice != 0 && choice != 6); // 6 car le restaurant est alors supprimé...
-  }
-
-  private long countLikes(Set<Evaluation> evaluations, boolean likeRestaurant) {
-    return evaluations.stream()
-        .filter(BasicEvaluation.class::isInstance)
-        .map(BasicEvaluation.class::cast)
-        .filter(eval -> likeRestaurant == eval.isLikeRestaurant())
-        .count();
   }
 
   private String getCompleteEvaluationDescription(CompleteEvaluation eval) {
@@ -297,10 +291,12 @@ public class CLI {
   private void proceedRestaurantMenu(int choice, Restaurant restaurant) {
     switch (choice) {
       case 1:
-        addBasicEvaluation(restaurant, true);
+        this.restaurantService.addLike(restaurant);
+        println("Votre vote a été pris en compte !");
         break;
       case 2:
-        addBasicEvaluation(restaurant, false);
+        this.restaurantService.addDislike(restaurant);
+        println("Votre vote a été pris en compte !");
         break;
       case 3:
         evaluateRestaurant(restaurant);
@@ -320,23 +316,6 @@ public class CLI {
     }
   }
 
-  private void addBasicEvaluation(Restaurant restaurant, Boolean like) {
-    BasicEvaluation eval = new BasicEvaluation(null, LocalDate.now(), restaurant, like, getIpAddress());
-    restaurant.getEvaluations().add(eval);
-    ConnectionUtils.inTransaction(() -> {
-      BasicEvaluationMapper.insert(eval);
-    });
-    println("Votre vote a été pris en compte !");
-  }
-
-  private String getIpAddress() {
-    try {
-      return Inet4Address.getLocalHost().toString();
-    } catch (UnknownHostException ex) {
-      throw new RuntimeException(ex);
-    }
-  }
-
   private void evaluateRestaurant(Restaurant restaurant) {
     println("Merci d'évaluer ce restaurant !");
     println("Quel est votre nom d'utilisateur ? ");
@@ -346,7 +325,7 @@ public class CLI {
 
     println("Veuillez svp donner une note entre 1 et 5 pour chacun de ces critères : ");
 
-    Set<EvaluationCriteria> evaluationCriterias = EvaluationCriteriaMapper.findAll(); // fakeItems.getEvaluationCriterias();
+    Set<EvaluationCriteria> evaluationCriterias = this.evaluationCriteriaService.getAll();
 
     CompleteEvaluation eval = new CompleteEvaluation(null, LocalDate.now(), restaurant, comment, username);
     Set<Grade> grades = new HashSet<>();
@@ -357,12 +336,8 @@ public class CLI {
       grades.add(grade);
     });
     eval.setGrades(grades);
-    restaurant.getEvaluations().add(eval);
 
-    // let's keep the transaction short and insert everything at the end:
-    ConnectionUtils.inTransaction(() -> {
-      CompleteEvaluationMapper.insert(eval);
-    });
+    this.restaurantService.evaluate(restaurant, eval);
 
     println("Votre évaluation a bien été enregistrée, merci !");
   }
@@ -378,50 +353,30 @@ public class CLI {
     restaurant.setWebsite(readString());
     println("Nouveau type de restaurant : ");
 
-    Set<RestaurantType> restaurantTypes = RestaurantTypeMapper.findAll();
+    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
 
     RestaurantType newType = pickRestaurantType(restaurantTypes);
-    if (newType != restaurant.getType()) {
-      restaurant.getType().getRestaurants().remove(restaurant); // Il faut d'abord supprimer notre restaurant puisque le type va peut-être changer
-      newType.getRestaurants().add(restaurant);
-      restaurant.setType(newType);
-    }
+    restaurant.setType(newType);
 
-    ConnectionUtils.inTransaction(() -> {
-      RestaurantMapper.update(restaurant);
-    });
+    this.restaurantService.save(restaurant);
 
     println("Merci, le restaurant a bien été modifié !");
   }
 
   private void editRestaurantAddress(Restaurant restaurant) {
     println("Edition de l'adresse d'un restaurant !");
-
     println("Nouvelle rue : ");
-    restaurant.getAddress().setStreet(readString());
-
-    Set<City> cities = CityMapper.findAll();
-
+    String newStreet = readString();
+    Set<City> cities = this.cityService.getAll();
     // pickCity is interacting with the user -> it's not good
     // to have this logic in a transaction.
     // instead, let the RestaurantMapper insert the city
     // automagically if needed (if City's id is null)
     // ConnectionUtils.inTransaction(() -> {
       City newCity = pickCity(cities);
-      // if (newCity.equals(restaurant.getAddress().getCity())) {
-      //    restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
-      //    newCity.getRestaurants().add(restaurant);
-      //    restaurant.getAddress().setCity(newCity);
-      // }
-      restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
-      newCity.getRestaurants().add(restaurant);
-      restaurant.getAddress().setCity(newCity);
+      restaurant.setAddress(new Localisation(newStreet, newCity));
     // });
-
-    ConnectionUtils.inTransaction(() -> {
-      RestaurantMapper.update(restaurant);
-    });
-
+    this.restaurantService.save(restaurant);
     println("L'adresse a bien été modifiée ! Merci !");
   }
 
@@ -429,33 +384,9 @@ public class CLI {
     println("Etes-vous sûr de vouloir supprimer ce restaurant ? (O/n)");
     String choice = readString();
     if ("o".equalsIgnoreCase(choice)) {
-      restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
-      restaurant.getType().getRestaurants().remove(restaurant);
-      ConnectionUtils.inTransaction(() -> {
-        RestaurantMapper.delete(restaurant);
-      });
-      // fakeItems.getAllRestaurants().remove(restaurant);
+      this.restaurantService.delete(restaurant);
       println("Le restaurant a bien été supprimé !");
     }
-  }
-
-  private Optional<Restaurant> searchRestaurantByName(Set<Restaurant> restaurants,
-      String name) {
-    return restaurants.stream()
-        .filter(current -> current.getName().equalsIgnoreCase(name.toUpperCase()))
-        .findFirst();
-  }
-
-  private Optional<City> searchCityByZipCode(Set<City> cities, String zipCode) {
-    return cities.stream()
-        .filter(current -> current.getZipCode().equalsIgnoreCase(zipCode.toUpperCase()))
-        .findFirst();
-  }
-
-  private Optional<RestaurantType> searchTypeByLabel(Set<RestaurantType> types, String label) {
-    return types.stream()
-        .filter(current -> current.getLabel().equalsIgnoreCase(label.toUpperCase()))
-        .findFirst();
   }
 
   private int readInt() {

@@ -126,6 +126,10 @@ public class RestaurantMapper {
         if (city.getId() == null) {
             CityMapper.insert(city);
         }
+        Set<Restaurant> cityRestaurants = city.getRestaurants();
+        if (!cityRestaurants.contains(restaurant)) {
+            cityRestaurants.add(restaurant);
+        }
     }
 
     private static Set<Restaurant> fetchRestaurants(List<Map<String, Object>> rows) {

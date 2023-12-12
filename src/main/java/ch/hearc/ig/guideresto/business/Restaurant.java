@@ -100,15 +100,33 @@ public class Restaurant {
         return address;
     }
 
-    public void setAddress(Localisation address) {
-        this.address = address;
+    public void setAddress(Localisation newAddress) {
+        // it's a good practice to move graph complexity in setters/adders/removers
+        if (this.address == null || !this.address.equals(newAddress)) {
+            City oldCity = this.address == null ? null : this.address.getCity();
+            City newCity = newAddress.getCity();
+            if (oldCity != newCity) {
+                if (oldCity != null) {
+                    oldCity.getRestaurants().remove(this);
+                }
+                newCity.getRestaurants().add(this);
+            }
+            this.address = newAddress;
+        }
     }
 
     public RestaurantType getType() {
         return type;
     }
 
-    public void setType(RestaurantType type) {
-        this.type = type;
+    public void setType(RestaurantType newType) {
+        // it's a good practice to move graph complexity in setters/adders/removers
+        if (this.type == null || !this.type.equals(newType)) {
+            if (this.type != null) {
+                this.type.getRestaurants().remove(this);
+            }
+            this.type = newType;
+            newType.getRestaurants().add(this);
+        }
     }
 }
