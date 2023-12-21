@@ -9,9 +9,9 @@ import ch.hearc.ig.guideresto.service.RestaurantTypeService;
 import java.io.PrintStream;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toUnmodifiableSet;
 
 public class CLI {
 
@@ -87,7 +87,7 @@ public class CLI {
     }
   }
 
-  private Optional<Restaurant> pickRestaurant(Set<ch.hearc.ig.guideresto.business.Restaurant> restaurants) {
+  private Optional<Restaurant> pickRestaurant(List<Restaurant> restaurants) {
     if (restaurants.isEmpty()) {
       println("Aucun restaurant n'a été trouvé !");
       return Optional.empty();
@@ -109,7 +109,7 @@ public class CLI {
   private void showRestaurantsList() {
     println("Liste des restaurants : ");
 
-    Set<Restaurant> restaurants = this.restaurantService.getAll();
+    List<Restaurant> restaurants = this.restaurantService.getAll();
 
     Optional<Restaurant> maybeRestaurant = pickRestaurant(restaurants);
     // Si l'utilisateur a choisi un restaurant, on l'affiche, sinon on ne fait rien et l'application va réafficher le menu principal
@@ -120,10 +120,10 @@ public class CLI {
     println("Veuillez entrer une partie du nom recherché : ");
     String research = readString();
 
-    Set<Restaurant> restaurants = this.restaurantService.getAll()
+    List<Restaurant> restaurants = this.restaurantService.getAll()
         .stream()
         .filter(r -> r.getName().equalsIgnoreCase(research))
-        .collect(toUnmodifiableSet());
+        .collect(Collectors.toUnmodifiableList());
 
     Optional<Restaurant> maybeRestaurant = pickRestaurant(restaurants);
     maybeRestaurant.ifPresent(this::showRestaurant);
@@ -142,16 +142,16 @@ public class CLI {
     // 2. RestaurantMapper.findByCity(City city) to find all restaurants in a city
     // The option below has been selected in the solution simply because it less intrusive in the CLI's code
     // (less code modifications)
-    Set<Restaurant> restaurants = this.restaurantService.getAll()
+    List<Restaurant> restaurants = this.restaurantService.getAll()
         .stream()
         .filter(r -> r.getAddress().getCity().getCityName().toUpperCase().contains(research.toUpperCase()))
-        .collect(toUnmodifiableSet());
+        .collect(Collectors.toUnmodifiableList());
 
     Optional<Restaurant> maybeRestaurant = pickRestaurant(restaurants);
     maybeRestaurant.ifPresent(this::showRestaurant);
   }
 
-  private City pickCity(Set<City> cities) {
+  private City pickCity(List<City> cities) {
     println(
         "Voici la liste des villes possibles, veuillez entrer le NPA de la ville désirée : ");
 
@@ -171,7 +171,7 @@ public class CLI {
     return CityService.filterByZipCode(cities, choice).orElseGet(() -> pickCity(cities));
   }
 
-  private RestaurantType pickRestaurantType(Set<RestaurantType> types) {
+  private RestaurantType pickRestaurantType(List<RestaurantType> types) {
 
     String typesText = types.stream()
         .map(currentType -> "\"" + currentType.getLabel() + "\" : " + currentType.getDescription())
@@ -187,7 +187,7 @@ public class CLI {
   }
 
   private void searchRestaurantByType() {
-    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
+    List<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
     RestaurantType chosenType = pickRestaurantType(restaurantTypes);
 
     // Another (better) option could be to have two finder methods:
@@ -195,10 +195,10 @@ public class CLI {
     // 2. RestaurantMapper.findByType(RestaurantType type) to find all restaurants of a given type
     // The option below has been selected in the solution simply because it less intrusive in the CLI's code
     // (less code modifications)
-    Set<Restaurant> restaurants = this.restaurantService.getAll()
+    List<Restaurant> restaurants = this.restaurantService.getAll()
         .stream()
         .filter(r -> r.getType().getLabel().equalsIgnoreCase(chosenType.getLabel()))
-        .collect(toUnmodifiableSet());
+        .collect(Collectors.toUnmodifiableList());
 
     Optional<Restaurant> maybeRestaurant = pickRestaurant(restaurants);
     maybeRestaurant.ifPresent(this::showRestaurant);
@@ -215,7 +215,7 @@ public class CLI {
     println("Rue : ");
     String street = readString();
     City city;
-    Set<City> cities = this.cityService.getAll();
+    List<City> cities = this.cityService.getAll();
     do
     { // La sélection d'une ville est obligatoire, donc l'opération se répètera tant qu'aucune ville n'est sélectionnée.
       city = pickCity(cities);
@@ -224,7 +224,7 @@ public class CLI {
     RestaurantType restaurantType;
 
     // La sélection d'un type est obligatoire, donc l'opération se répètera tant qu'aucun type n'est sélectionné.
-    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
+    List<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
     restaurantType = pickRestaurantType(restaurantTypes);
 
     Restaurant restaurant = new Restaurant(null, name, description, website, street, city,
@@ -325,7 +325,7 @@ public class CLI {
 
     println("Veuillez svp donner une note entre 1 et 5 pour chacun de ces critères : ");
 
-    Set<EvaluationCriteria> evaluationCriterias = this.evaluationCriteriaService.getAll();
+    List<EvaluationCriteria> evaluationCriterias = this.evaluationCriteriaService.getAll();
 
     CompleteEvaluation eval = new CompleteEvaluation(null, LocalDate.now(), restaurant, comment, username);
     Set<Grade> grades = new HashSet<>();
@@ -353,7 +353,7 @@ public class CLI {
     restaurant.setWebsite(readString());
     println("Nouveau type de restaurant : ");
 
-    Set<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
+    List<RestaurantType> restaurantTypes = this.restaurantTypeService.getAll();
 
     RestaurantType newType = pickRestaurantType(restaurantTypes);
     restaurant.setType(newType);
@@ -367,7 +367,7 @@ public class CLI {
     println("Edition de l'adresse d'un restaurant !");
     println("Nouvelle rue : ");
     String newStreet = readString();
-    Set<City> cities = this.cityService.getAll();
+    List<City> cities = this.cityService.getAll();
     // pickCity is interacting with the user -> it's not good
     // to have this logic in a transaction.
     // instead, let the RestaurantMapper insert the city

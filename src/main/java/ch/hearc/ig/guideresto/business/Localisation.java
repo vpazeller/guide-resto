@@ -1,11 +1,19 @@
 package ch.hearc.ig.guideresto.business;
 
+import javax.persistence.*;
 import java.util.Objects;
 
+@Embeddable
 public class Localisation {
 
+    @Column(name = "ADRESSE")
     private String street;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "FK_VILL")
     private City city;
+
+    // Empty constructor for Hibernate
+    public Localisation() {}
 
     public Localisation(String street, City city) {
         this.street = street;

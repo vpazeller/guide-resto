@@ -1,21 +1,26 @@
 package ch.hearc.ig.guideresto.business;
 
-import ch.hearc.ig.guideresto.persistence.GradeMapper;
-
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.OneToMany;
+import javax.persistence.Table;
 import java.time.LocalDate;
-import java.util.HashSet;
 import java.util.Set;
 
+@Entity
+@Table(name = "COMMENTAIRES")
 public class CompleteEvaluation extends Evaluation {
 
+  @Column(name = "COMMENTAIRE")
   private String comment;
+  @Column(name = "NOM_UTILISATEUR")
   private String username;
+  @OneToMany(mappedBy = "evaluation")
   private Set<Grade> grades;
 
-  // Having an empty constructor is handy to work with identity maps / entity registries
+  // Empty constructor for Hibernate
   public CompleteEvaluation() {
     super();
-    this.grades = new HashSet<>();
   }
 
   public CompleteEvaluation(Integer id, LocalDate visitDate, Restaurant restaurant, String comment,
@@ -23,7 +28,6 @@ public class CompleteEvaluation extends Evaluation {
     super(id, visitDate, restaurant);
     this.comment = comment;
     this.username = username;
-    this.grades = null; // lazy loading
   }
 
   public String getComment() {
@@ -43,10 +47,7 @@ public class CompleteEvaluation extends Evaluation {
   }
 
   public Set<Grade> getGrades() {
-    // lazy loading
-    if (this.grades == null) {
-      this.grades = GradeMapper.findByEvaluation(this);
-    }
+    //  we don't need lazy loading logic anymore (hibernate is handling it)
     return this.grades;
   }
 

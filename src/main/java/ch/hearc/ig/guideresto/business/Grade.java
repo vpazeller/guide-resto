@@ -1,13 +1,26 @@
 package ch.hearc.ig.guideresto.business;
 
+import javax.persistence.*;
+
+@Entity
+@Table(name = "NOTES")
 public class Grade {
 
+    @Id
+    @Column(name = "NUMERO")
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SEQ_NOTES")
+    @SequenceGenerator(name = "SEQ_NOTES", allocationSize = 1)
     private Integer id;
+    @Column(name = "NOTE")
     private Integer grade;
+    @ManyToOne
+    @JoinColumn(name = "FK_COMM")
     private CompleteEvaluation evaluation;
+    @ManyToOne
+    @JoinColumn(name = "FK_CRIT")
     private EvaluationCriteria criteria;
 
-    // Having an empty constructor is handy to work with identity maps / entity registries
+    // Empty constructor for Hibernate
     public Grade() {}
 
     public Grade(Integer id, Integer grade, CompleteEvaluation evaluation, EvaluationCriteria criteria) {
@@ -19,12 +32,6 @@ public class Grade {
 
     public Integer getId() {
         return id;
-    }
-
-    // ideally, this setter could be avoided by using reflection instead
-    // since this is a basic solution, this is acceptable though
-    public void setId(Integer id) {
-        this.id = id;
     }
 
     public Integer getGrade() {

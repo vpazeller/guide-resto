@@ -1,12 +1,22 @@
 package ch.hearc.ig.guideresto.business;
 
+import javax.persistence.*;
+
+@Entity
+@Table(name = "CRITERES_EVALUATION")
 public class EvaluationCriteria {
 
+    @Id
+    @Column(name = "NUMERO")
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SEQ_CRITERES_EVALUATION")
+    @SequenceGenerator(name = "SEQ_CRITERES_EVALUATION", allocationSize = 1)
     private Integer id;
+    @Column(name = "NOM")
     private String name;
+    @Column(name = "DESCRIPTION")
     private String description;
 
-    // Having an empty constructor is handy to work with identity maps / entity registries
+    // Empty constructor for Hibernate
     public EvaluationCriteria() {}
 
     public EvaluationCriteria(Integer id, String name, String description) {
@@ -17,10 +27,6 @@ public class EvaluationCriteria {
 
     public Integer getId() {
         return id;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
     }
 
     public String getName() {

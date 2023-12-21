@@ -4,14 +4,12 @@ import ch.hearc.ig.guideresto.business.BasicEvaluation;
 import ch.hearc.ig.guideresto.business.CompleteEvaluation;
 import ch.hearc.ig.guideresto.business.Evaluation;
 import ch.hearc.ig.guideresto.business.Restaurant;
-import ch.hearc.ig.guideresto.persistence.BasicEvaluationMapper;
-import ch.hearc.ig.guideresto.persistence.CompleteEvaluationMapper;
-import ch.hearc.ig.guideresto.persistence.ConnectionUtils;
-import ch.hearc.ig.guideresto.persistence.RestaurantMapper;
+import ch.hearc.ig.guideresto.persistence.JpaUtils;
 
 import java.net.Inet4Address;
 import java.net.UnknownHostException;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -31,41 +29,33 @@ public class RestaurantService {
         return RestaurantService.instance;
     }
 
-    public Set<Restaurant> getAll() {
-        // since we are only reading, there is no need for a transaction here
-        return RestaurantMapper.findAll();
+    public List<Restaurant> getAll() {
+        return JpaUtils.getEntityManager().createQuery(
+                "SELECT r FROM Restaurant r INNER JOIN FETCH r.type t INNER JOIN FETCH r.address.city c",
+                Restaurant.class
+        ).getResultList();
     }
 
     public void evaluate(Restaurant restaurant, CompleteEvaluation eval) {
-        Set<Evaluation> existingEvaluations = restaurant.getEvaluations();
-        // let's make it a bit more robust and avoid problems with misusage (duplicates)
-        if (!existingEvaluations.contains(eval)) {
-            existingEvaluations.add(eval);
-        }
 
-        // let's keep the transaction short and insert everything at the end:
-        ConnectionUtils.inTransaction(() -> {
-            CompleteEvaluationMapper.insert(eval);
+        JpaUtils.inTransaction((em) -> {
+            Set<Evaluation> existingEvaluations = restaurant.getEvaluations();
+            existingEvaluations.add(eval);
+            em.persist(eval);
         });
     }
 
     public void save(Restaurant restaurant) {
-        ConnectionUtils.inTransaction(() -> {
-            // let's have a clever service which guesses
-            // what's need to be done (totally optional)
-            if (restaurant.getId() == null) {
-                RestaurantMapper.insert(restaurant);
-            } else {
-                RestaurantMapper.update(restaurant);
-            }
+        JpaUtils.inTransaction((em) -> {
+            em.persist(restaurant);
         });
     }
 
     public void delete(Restaurant restaurant) {
         restaurant.getAddress().getCity().getRestaurants().remove(restaurant);
         restaurant.getType().getRestaurants().remove(restaurant);
-        ConnectionUtils.inTransaction(() -> {
-            RestaurantMapper.delete(restaurant);
+        JpaUtils.inTransaction((em) -> {
+            em.remove(restaurant);
         });
     }
 
@@ -89,7 +79,7 @@ public class RestaurantService {
         return this.getBasicEvalCount(restaurant, false);
     }
 
-    public static Optional<Restaurant> filterByName(Set<Restaurant> restaurants, String name) {
+    public static Optional<Restaurant> filterByName(List<Restaurant> restaurants, String name) {
         // Possible improvement:
         // it would be interesting to cache restaurants in the service (e.g. upon getAll calls) so that
         // 1) the first argument would not be needed
@@ -100,10 +90,10 @@ public class RestaurantService {
     }
 
     private void addBasicEval(Restaurant restaurant, boolean isLike) {
-        BasicEvaluation eval = new BasicEvaluation(null, LocalDate.now(), restaurant, isLike, this.getIpAddress());
-        restaurant.getEvaluations().add(eval);
-        ConnectionUtils.inTransaction(() -> {
-            BasicEvaluationMapper.insert(eval);
+        JpaUtils.inTransaction((em) -> {
+            BasicEvaluation eval = new BasicEvaluation(null, LocalDate.now(), restaurant, isLike, this.getIpAddress());
+            restaurant.getEvaluations().add(eval);
+            em.persist(eval);
         });
     }
 

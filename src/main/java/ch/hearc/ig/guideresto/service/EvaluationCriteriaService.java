@@ -1,9 +1,9 @@
 package ch.hearc.ig.guideresto.service;
 
 import ch.hearc.ig.guideresto.business.EvaluationCriteria;
-import ch.hearc.ig.guideresto.persistence.EvaluationCriteriaMapper;
+import ch.hearc.ig.guideresto.persistence.JpaUtils;
 
-import java.util.Set;
+import java.util.List;
 
 public class EvaluationCriteriaService {
 
@@ -21,9 +21,11 @@ public class EvaluationCriteriaService {
         return EvaluationCriteriaService.instance;
     }
 
-    public Set<EvaluationCriteria> getAll() {
-        // since we are only reading, there is no need for a transaction here
-        return EvaluationCriteriaMapper.findAll();
+    public List<EvaluationCriteria> getAll() {
+        return JpaUtils.getEntityManager().createQuery(
+                "SELECT c FROM EvaluationCriteria c",
+                EvaluationCriteria.class
+        ).getResultList();
     }
 
 }

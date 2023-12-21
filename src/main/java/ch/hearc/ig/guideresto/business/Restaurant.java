@@ -1,23 +1,33 @@
 package ch.hearc.ig.guideresto.business;
 
-import ch.hearc.ig.guideresto.persistence.EvaluationMapper;
-
-import java.util.HashSet;
+import javax.persistence.*;
 import java.util.Set;
 
+@Entity
+@Table(name = "RESTAURANTS")
 public class Restaurant {
+
+    @Id
+    @Column(name = "NUMERO")
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SEQ_RESTAURANTS")
+    @SequenceGenerator(name = "SEQ_RESTAURANTS", allocationSize = 1)
     private Integer id;
+    @Column(name = "NOM")
     private String name;
+    @Column(name="DESCRIPTION")
     private String description;
+    @Column(name = "SITE_WEB")
     private String website;
+    @OneToMany(mappedBy = "restaurant")
     private Set<Evaluation> evaluations;
+    @Embedded
     private Localisation address;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "FK_TYPE")
     private RestaurantType type;
 
-    // Having an empty constructor is handy to work with identity maps / entity registries
-    public Restaurant() {
-        this.evaluations = new HashSet<>();
-    }
+    // Empty constructor for Hibernate
+    public Restaurant() {}
 
     public Restaurant(Integer id, String name, String description, String website, String street, City city, RestaurantType type) {
         this.id = id;
@@ -26,16 +36,9 @@ public class Restaurant {
         this.website = website;
         this.address = new Localisation(street, city);
         this.type = type;
-        this.evaluations = null; // lazy evaluation
     }
 
     public Integer getId() { return this.id; }
-
-    // ideally, this setter could be avoided by using reflection instead
-    // since this is a basic solution, this is acceptable though
-    public void setId(Integer id) {
-        this.id = id;
-    }
 
     public String getName() {
         return name;
@@ -89,11 +92,12 @@ public class Restaurant {
     }
 
     public Set<Evaluation> getEvaluations() {
-        // lazy loading
-        if (this.evaluations == null) {
-            this.evaluations = EvaluationMapper.findByRestaurant(this);
-        }
+        // we don't need lazy loading logic anymore (hibernate is doing it)
         return this.evaluations;
+    }
+
+    public void setEvaluations(Set<Evaluation> evaluations) {
+        this.evaluations = evaluations;
     }
 
     public Localisation getAddress() {

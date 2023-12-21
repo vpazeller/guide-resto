@@ -1,10 +1,10 @@
 package ch.hearc.ig.guideresto.service;
 
 import ch.hearc.ig.guideresto.business.City;
-import ch.hearc.ig.guideresto.persistence.CityMapper;
+import ch.hearc.ig.guideresto.persistence.JpaUtils;
 
+import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 public class CityService {
 
@@ -22,16 +22,18 @@ public class CityService {
         return CityService.instance;
     }
 
-    public Set<City> getAll() {
-        // since we are only reading, there is no need for a transaction here
-        return CityMapper.findAll();
+    public List<City> getAll() {
+        return JpaUtils.getEntityManager().createQuery(
+                "SELECT c FROM City c",
+                City.class
+        ).getResultList();
     }
 
     // it's also possible to create service methods not related to persistence
     // as long as it does not step on another layer (e.g. presentation)
     // In our case, this helps improve the presentation's layer readability
     // (which is quite cluttered already)
-    public static Optional<City> filterByZipCode(Set<City> cities, String zipCode) {
+    public static Optional<City> filterByZipCode(List<City> cities, String zipCode) {
         // Possible improvement:
         // it would be interesting to cache cities in the service so that
         // 1) the first argument would not be needed
